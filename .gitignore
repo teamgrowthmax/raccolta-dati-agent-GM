@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+cache/
+*.log
+plan.json
+canary_*.json
+lista_clienti_to_ghl.json
+run_batch.py
+local_secrets.py
