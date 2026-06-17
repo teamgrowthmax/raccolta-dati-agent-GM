@@ -1,0 +1,2 @@
+# L'agent usa solo la standard library di Python (nessuna dipendenza esterna).
+# Questo file serve a Railway/Nixpacks per riconoscere il progetto come Python.

@@ -119,7 +119,8 @@ def build(dry=True):
     warnings = []
 
     # finestra "recente" per segnalare lead non sul foglio (possibile automazione fallita)
-    today = datetime.date(*[int(x) for x in os.environ.get("AGENT_TODAY", "2026-06-03").split("-")])
+    _td = os.environ.get("AGENT_TODAY") or datetime.date.today().isoformat()
+    today = datetime.date(*[int(x) for x in _td.split("-")])
     recent_cut = today - datetime.timedelta(days=7)
 
     # ---- FASE 1: ogni contatto rilevante reclama una riga (o nessuna) ----
@@ -295,7 +296,7 @@ if __name__ == "__main__":
         execute(plan)
         try:
             import report
-            ts = os.environ.get("AGENT_TODAY", "run")
+            ts = os.environ.get("AGENT_TODAY") or datetime.date.today().isoformat()
             report.write_log(plan, ts)
             print("Report scritto su tab 'log agent'")
         except Exception as e:
