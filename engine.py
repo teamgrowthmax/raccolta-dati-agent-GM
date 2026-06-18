@@ -17,10 +17,25 @@ def gnz(v):
 
 
 # ---------------------------------------------------------------- date helpers
+_MESI = {"january":1,"february":2,"march":3,"april":4,"may":5,"june":6,"july":7,"august":8,
+         "september":9,"october":10,"november":11,"december":12,
+         "gennaio":1,"febbraio":2,"marzo":3,"aprile":4,"maggio":5,"giugno":6,"luglio":7,
+         "agosto":8,"settembre":9,"ottobre":10,"novembre":11,"dicembre":12}
+
 def parse_iso_or_it(s):
-    """Ritorna date o None. Gestisce ISO e gg/mm/aaaa (italiano)."""
-    s = str(s).strip().replace("T", " ").split(" ")[0]
+    """Ritorna date o None. Gestisce ISO, gg/mm/aaaa (it), mm/dd US e mese testuale (es. 'June 3, 2026')."""
+    s = str(s).strip()
     if not s: return None
+    # mese testuale: "June 3, 2026" oppure "3 June 2026"
+    m = re.match(r"^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$", s)
+    if m and m.group(1).lower() in _MESI:
+        try: return datetime.date(int(m.group(3)), _MESI[m.group(1).lower()], int(m.group(2)))
+        except: return None
+    m = re.match(r"^(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})$", s)
+    if m and m.group(2).lower() in _MESI:
+        try: return datetime.date(int(m.group(3)), _MESI[m.group(2).lower()], int(m.group(1)))
+        except: return None
+    s = s.replace("T", " ").split(" ")[0]
     m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", s)
     if m:
         try: return datetime.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
