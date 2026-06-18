@@ -97,7 +97,8 @@ def build(dry=True):
     rows = fetch_sheet()
     print(f"  {len(rows)} righe", flush=True)
 
-    # indici foglio
+    # indici foglio. Telefono usato come chiave SOLO se non e' un placeholder-spazzatura
+    # (es. 3333333333) per non agganciare lead diversi che condividono un numero finto.
     by_cid = {}; by_email = {}; by_phone = {}
     for r in rows:
         cid = str(r.get("Contact ID") or "").strip()
@@ -105,15 +106,17 @@ def build(dry=True):
         em = ne(r.get("EMAIL"))
         if em: by_email.setdefault(em, r)
         ph = dg(r.get("NUMERO DI TELEFONO"))
-        if len(ph) >= 9: by_phone.setdefault(ph[-9:], r)
+        if len(ph) >= 9 and not C.tel_finto(r.get("NUMERO DI TELEFONO")):
+            by_phone.setdefault(ph[-9:], r)
 
     def find_row(c):
-        r = by_cid.get(c["id"])
+        r = by_cid.get(c["id"])      # 1) Contact ID = chiave univoca, sempre prima
         if r: return r, "cid"
-        em = ne(c.get("email"))
+        em = ne(c.get("email"))      # 2) email come check
         if em and em in by_email: return by_email[em], "email"
-        ph = dg(c.get("phone"))
-        if len(ph) >= 9 and ph[-9:] in by_phone: return by_phone[ph[-9:]], "phone"
+        ph = dg(c.get("phone"))      # 3) telefono come check, solo se non finto
+        if len(ph) >= 9 and not C.tel_finto(c.get("phone")) and ph[-9:] in by_phone:
+            return by_phone[ph[-9:]], "phone"
         return None, None
 
     # lead rilevanti: con opportunity FE o UPSELL (per flag) UNION righe foglio con CID (per sync)

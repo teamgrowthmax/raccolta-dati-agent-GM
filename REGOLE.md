@@ -11,9 +11,11 @@ In ogni conflitto, GHL comanda e il foglio si adegua. L'agent non scrive mai su 
 
 ## Identificazione del lead (aggancio riga foglio ↔ contatto GHL)
 Per ogni contatto GHL rilevante, trovo la riga sul foglio con priorità:
-1. **Contact ID** (colonna BP)
-2. Email (D)
-3. Numero di telefono (E) — match sulle ultime 9 cifre
+1. **Contact ID** (colonna BP) — chiave univoca, sempre prima
+2. Email (D) — come check
+3. Numero di telefono (E, ultime 9 cifre) — come check, **ma solo se NON è un numero-spazzatura**
+   (cifre ripetute tipo `3333333333`, troppo corto, sequenze): i telefoni finti sono condivisi da
+   molti lead diversi e creerebbero falsi accoppiamenti, quindi vengono ignorati nel match e nel backfill.
 
 **L'agent NON crea righe nuove sul foglio.** Le righe le crea l'automazione GHL all'ingresso del lead;
 l'agent lavora solo su quelle esistenti. I contatti GHL **non presenti** sul foglio:

@@ -361,3 +361,17 @@ def fetch_picklists_live():
     """Scarica i custom field da GHL e ritorna {fid: [opzioni]}. Per uso in cloud (no cache file)."""
     d = ghl_get("/custom-fields/")
     return {f["id"]: (f.get("picklistOptions") or []) for f in d.get("customFields", [])}
+
+
+def tel_finto(t):
+    """True se il telefono e' un valore-spazzatura (cifre ripetute, troppo corto, sequenze).
+    Usato per NON agganciare lead diversi che condividono un numero placeholder (es. 3333333333)."""
+    d = re.sub(r"\D", "", str(t or ""))
+    if len(d) < 10:
+        return True
+    l9 = d[-9:]
+    if len(set(l9)) <= 2:        # es. 333333333, 000000000, 121212121
+        return True
+    if l9 in ("123456789", "012345678", "987654321"):
+        return True
+    return False
