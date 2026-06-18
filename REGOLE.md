@@ -95,7 +95,12 @@ Regola: riempio le celle vuote + sovrascrivo quando il valore foglio è semantic
 (date confrontate per giorno; placeholder GHL tipo `-`,`/`,`no data` ignorati).
 - Alcuni campi possono mancare legittimamente (es. Username telegram spesso assente).
 - Può capitare che sia compilato **solo NOME SETTER** (lead entrati da altro funnel).
-- **WARNING**: se manca **Link iscrizione Community** → segnalazione nel report (in futuro notifica al setter).
+- **Link iscrizione Community (auto-fix)**: gestito **solo se il lead proviene da Telegram** (ha almeno un altro campo Telegram compilato). Se **tutti** i campi Telegram sono vuoti → il lead NON viene da Telegram → link giustamente vuoto, niente da fare.
+  Se proviene da Telegram e il link manca, l'agent lo compila (su GHL **e** foglio):
+  - **ID Chat Lead vuoto** → `NON PRESENTE`
+  - **ID Chat Lead presente** → cerca l'ID nella colonna H (USER ID) del foglio **"lead nuovi"** (spreadsheet `1VgGQMUp2G2Z6ZZly8WVjK6uS89LaVQeAMssBpAYAxkQ`, letto via azione Apps Script `?action=leadnuovi`):
+    - **trovato** → scrive il link dalla colonna D (LINK)
+    - **non trovato** → `NON TROVATO`
 
 ### Regola NOME SETTER (BY) — uniformità su GHL **e** foglio
 Il nome del setter deve essere scritto in **un'unica forma: prima lettera maiuscola** (es. `serena`→`Serena`,

@@ -13,6 +13,7 @@ def hp(n): return os.path.join(HERE, n)
 # picklist: prima prova file cache locale, altrimenti scarica da GHL (cloud)
 _cf = os.path.join(C.CACHE, "custom_fields.json")
 PICK = C.load_picklists(_cf) if os.path.exists(_cf) else C.fetch_picklists_live()
+LEADNUOVI = {}  # mappa ID Chat -> Link community (dal foglio "lead nuovi"), caricata in build()
 
 def dg(s): return re.sub(r"\D", "", str(s or ""))
 def ne(s): return str(s if s is not None else "").strip().lower()
@@ -77,6 +78,14 @@ def first_appt_date(cid):
 
 # ---------------------------------------------------------------- BUILD PLAN
 def build(dry=True):
+    global LEADNUOVI
+    print("FETCH mappa 'lead nuovi' (ID->Link)...", flush=True)
+    try:
+        LEADNUOVI = C.sheet_get({"action": "leadnuovi"}).get("map", {}) or {}
+        print(f"  lead nuovi: {len(LEADNUOVI)} ID->Link", flush=True)
+    except Exception as e:
+        LEADNUOVI = {}
+        print("  WARN: lead nuovi non caricato:", e, flush=True)
     print("FETCH contatti GHL...", flush=True)
     contacts = scan_contacts()
     print(f"  {len(contacts)} contatti", flush=True)
@@ -115,7 +124,8 @@ def build(dry=True):
     not_on_sheet = []         # lead GHL non sul foglio (SOLO segnalati, mai creati)
     backfill_cid = []         # {row, cid}
     stats = dict(flag_add=0, flag_remove=0, tg=0, vendita=0, owner=0, data_crea=0,
-                 setter_ghl=0, datacrea_ghl=0, not_on_sheet=0, not_on_sheet_recenti=0, backfill=0)
+                 setter_ghl=0, datacrea_ghl=0, link_fix=0, link_ghl=0,
+                 not_on_sheet=0, not_on_sheet_recenti=0, backfill=0)
     warnings = []
 
     # finestra "recente" per segnalare lead non sul foglio (possibile automazione fallita)
@@ -188,12 +198,17 @@ def _accumulate(r, c, stato, cell_changes, cell_removes, ghl_writes, warnings, s
             cell_removes.append({"row": rownum, "col": ch["col"], "value": ""}); stats["flag_remove"] += 1
         else:
             cell_changes.append({"row": rownum, "col": ch["col"], "value": ch["value"], "asText": True}); stats["flag_add"] += 1
-    # Sez 2: telegram + setter
-    tg_ch, ghl_setter, warns = E.compute_telegram(r, c, PICK)
+    # Sez 2: telegram + setter + link
+    tg_ch, tg_ghl, warns = E.compute_telegram(r, c, PICK, LEADNUOVI)
     for ch in tg_ch:
-        cell_changes.append({"row": rownum, "col": ch["col"], "value": ch["value"], "asText": True}); stats["tg"] += 1
-    if ghl_setter:
-        ghl_writes.append({"cid": c["id"], "field": C.NOME_SETTER_FID, "value": ghl_setter}); stats["setter_ghl"] += 1
+        cell_changes.append({"row": rownum, "col": ch["col"], "value": ch["value"], "asText": True})
+        if ch.get("op") == "linkfix": stats["link_fix"] += 1
+        elif ch.get("op") == "setter": stats["tg"] += 1
+        else: stats["tg"] += 1
+    for fid, val in tg_ghl:
+        ghl_writes.append({"cid": c["id"], "field": fid, "value": val})
+        if fid == C.NOME_SETTER_FID: stats["setter_ghl"] += 1
+        elif fid == E.LINK_FID: stats["link_ghl"] += 1
     for w in warns:
         warnings.append({"row": rownum, "nome": r.get("NOME E COGNOME"), "warn": w})
     # Sez 3: vendita
@@ -255,6 +270,7 @@ def _print_summary(plan):
     print(f"Owner allineati:  {s['owner']}")
     print(f"Data creazione:   {s['data_crea']} (su GHL custom: {s['datacrea_ghl']})")
     print(f"NOME SETTER su GHL:{s['setter_ghl']}")
+    print(f"Link community fix:{s['link_fix']} celle foglio (+{s['link_ghl']} su GHL)")
     print(f"Backfill CID:     {s['backfill']}")
     print(f"Lead non sul foglio: {s['not_on_sheet']} (di cui RECENTI da segnalare: {s['not_on_sheet_recenti']})")
     print(f"Warning:          {len(plan['warnings'])}")

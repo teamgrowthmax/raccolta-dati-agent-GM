@@ -98,14 +98,21 @@ def is_setter(contact):
 # ================================================================
 # SEZIONE 2 — Telegram + NOME SETTER + data iscrizione
 # ================================================================
-def compute_telegram(row, contact, picklists):
-    """Ritorna (changes_sheet, ghl_setter_change, warnings)."""
-    changes = []; warnings = []; ghl_setter = None
+LINK_FID = "80MrmQlYv54VU1yw71lu"
+ID_CHAT_FID = "E1rokzfIvCi7ltONWWNE"
+
+def compute_telegram(row, contact, picklists, leadnuovi=None):
+    """Ritorna (changes_sheet, ghl_writes, warnings).
+    ghl_writes = lista di (field_id, value) da scrivere su GHL (setter, link)."""
+    changes = []; warnings = []; ghl_writes = []
+    leadnuovi = leadnuovi or {}
     cf = cfmap(contact)
     for col, fid, kind in C.TG_FIELDS:
         gv = cf.get(fid)
         if col == "NOME SETTER":
             continue  # gestito sotto (uniformita' GHL+foglio)
+        if col == "Link iscrizione Community":
+            continue  # gestito sotto (logica NON PRESENTE / lead nuovi / NON TROVATO)
         if col == "Data iscrizione community telegram":
             ch = _data_iscrizione(row, col, gv, cf)
             if ch: changes.append(ch)
@@ -117,24 +124,36 @@ def compute_telegram(row, contact, picklists):
             changes.append({"col": col, "value": new, "op": "fill"})
         elif not _same(kind, row.get(col), gv):
             changes.append({"col": col, "value": new, "op": "overwrite"})
-    # WARNING link community mancante — SOLO per lead setter (per cui il link e' atteso)
-    if is_setter(contact):
-        link = cf.get("80MrmQlYv54VU1yw71lu")
-        if not gnz(link) and not nz(row.get("Link iscrizione Community")):
-            warnings.append("Link iscrizione Community mancante")
+    # --- LINK iscrizione Community (Sez.2) ---
+    # Solo se il lead PROVIENE da Telegram (almeno un altro campo Telegram compilato).
+    # Se tutti vuoti -> non e' Telegram -> link giustamente vuoto, niente da fare.
+    tg_altri = [fid for _c, fid, _k in C.TG_FIELDS if fid != LINK_FID]
+    proviene_da_telegram = any(gnz(cf.get(fid)) for fid in tg_altri)
+    link_presente = gnz(cf.get(LINK_FID)) or nz(row.get("Link iscrizione Community"))
+    if proviene_da_telegram and not link_presente:
+        idchat = cf.get(ID_CHAT_FID)
+        if not gnz(idchat):
+            idchat = row.get("ID Chat Lead")  # fallback dal foglio
+        idkey = re.sub(r"\D", "", str(idchat)) if gnz(idchat) else ""
+        if not idkey:
+            newlink = "NON PRESENTE"          # manca anche l'ID chat
+        else:
+            newlink = leadnuovi.get(idkey) or "NON TROVATO"  # cerca in "lead nuovi"
+        changes.append({"col": "Link iscrizione Community", "value": newlink, "op": "linkfix"})
+        ghl_writes.append((LINK_FID, newlink))
     # NOME SETTER: uniforma GHL + foglio
     g_setter = cf.get(C.NOME_SETTER_FID)
     if gnz(g_setter):
         canon = C.capitalize_name(g_setter)
         if str(g_setter).strip() != canon:
-            ghl_setter = canon  # da scrivere su GHL
+            ghl_writes.append((C.NOME_SETTER_FID, canon))  # da scrivere su GHL
         if ne(row.get("NOME SETTER")) != ne(canon):
             changes.append({"col": "NOME SETTER", "value": canon, "op": "setter"})
     elif nz(row.get("NOME SETTER")):
         canon = C.capitalize_name(row.get("NOME SETTER"))
         if row.get("NOME SETTER") != canon:
             changes.append({"col": "NOME SETTER", "value": canon, "op": "setter"})
-    return changes, ghl_setter, warnings
+    return changes, ghl_writes, warnings
 
 
 def _data_iscrizione(row, col, gv, cf):
