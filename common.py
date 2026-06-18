@@ -231,9 +231,13 @@ def canon_token(field_id, raw, picklists):
 
 def coerce_multi(raw, field_id, picklists):
     """Split su virgola (NON su '+'), normalizza ogni token, dedup.
-    Ritorna (lista_valori, lista_token_mancanti)."""
-    s = str(raw).strip()
-    parts = [p.strip() for p in s.split(",")] if "," in s else [s]
+    Ritorna (lista_valori, lista_token_mancanti).
+    raw puo' essere una LISTA (valori GHL multi-opzione) o una stringa (valori dal foglio)."""
+    if isinstance(raw, list):
+        parts = [str(x).strip() for x in raw]
+    else:
+        s = str(raw).strip()
+        parts = [p.strip() for p in s.split(",")] if "," in s else [s]
     vals, missing, seen = [], [], set()
     for p in parts:
         if not p:
