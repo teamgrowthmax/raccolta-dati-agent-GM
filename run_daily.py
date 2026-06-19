@@ -19,6 +19,20 @@ def dg(s): return re.sub(r"\D", "", str(s or ""))
 def ne(s): return str(s if s is not None else "").strip().lower()
 def nz(v): return v is not None and str(v).strip() != ""
 
+# stati per cui si CREA la riga sul foglio se manca (lead lavorato: appuntamento+ / cliente)
+STATI_CREABILI = {"UPSELL", "Appuntamento fissato", "Appuntamento show", "Appuntamento no show",
+                  "In attesa pagamento", "Perso", "Sospeso", "Chiuso"}
+
+def _recente(c, cf):
+    """True se l'attivita' del lead e' nel 2026+ (data creazione GHL o data chiusura FE/upsell).
+    Esclude i vecchi clienti storici (2024-2025)."""
+    def anno(s):
+        m = re.search(r"20\d{2}", str(s or "")); return int(m.group()) if m else None
+    anni = [anno(c.get("dateAdded")), anno(cf.get(C.DATA_CREAZIONE_FID)), anno(cf.get("3QS3YTvHAJ9hDaIjvyDO"))]
+    for n in range(1, 8):
+        anni.append(anno(cf.get(C.UP_FIELDS[n][0][1])))  # data chiusura upsell n
+    return any(a and a >= 2026 for a in anni)
+
 
 # ---------------------------------------------------------------- FETCH
 def scan_contacts():
@@ -124,17 +138,13 @@ def build(dry=True):
     cell_changes = []         # {row,col,value} per updateRows
     cell_removes = []         # idem value=""
     ghl_writes = []           # {cid, field, value} per PUT GHL (setter/data creazione)
-    not_on_sheet = []         # lead GHL non sul foglio (SOLO segnalati, mai creati)
+    not_on_sheet = []         # lead GHL non sul foglio NON creabili (freddi recenti) -> solo segnalati
+    new_rows = []             # righe nuove da creare sul foglio (lead lavorati + recenti)
     backfill_cid = []         # {row, cid}
     stats = dict(flag_add=0, flag_remove=0, tg=0, vendita=0, owner=0, data_crea=0,
                  setter_ghl=0, datacrea_ghl=0, link_fix=0, link_ghl=0,
-                 not_on_sheet=0, not_on_sheet_recenti=0, backfill=0)
+                 not_on_sheet=0, not_on_sheet_recenti=0, new_rows=0, backfill=0)
     warnings = []
-
-    # finestra "recente" per segnalare lead non sul foglio (possibile automazione fallita)
-    _td = os.environ.get("AGENT_TODAY") or datetime.date.today().isoformat()
-    today = datetime.date(*[int(x) for x in _td.split("-")])
-    recent_cut = today - datetime.timedelta(days=7)
 
     # ---- FASE 1: ogni contatto rilevante reclama una riga (o nessuna) ----
     # row_claims: _row -> lista di (cid, contact, stato, via)
@@ -147,14 +157,17 @@ def build(dry=True):
         fe_stage = fe.get(cid, [{}])[0].get("stage") if cid in fe else None
         stato = E.lead_stato(c, fe_stage, in_upsell)
         if r is None:
-            # REGOLA: NON creo righe. Segnalo solo i lead RECENTI con stato rilevante.
-            if stato and stato != "UPSELL":
-                da = (c.get("dateAdded") or "")[:10]
-                try: dadd = datetime.date(*[int(x) for x in da.split("-")]) if da else None
-                except: dadd = None
-                if dadd and dadd >= recent_cut:
+            # REGOLA: creo la riga sul foglio se il lead e' LAVORATO (appuntamento+/cliente)
+            # e RECENTE (attivita' nel 2026+). I freddi e i vecchi non vengono creati.
+            cf = E.cfmap(c)
+            if stato in STATI_CREABILI and _recente(c, cf):
+                new_rows.append(_build_new_row(c, stato, contacts))
+                stats["new_rows"] += 1
+            elif stato and stato not in STATI_CREABILI:
+                # recente ma non creabile (es. freddo): solo segnalazione
+                if _recente(c, cf):
                     not_on_sheet.append({"cid": cid, "nome": ((c.get("firstName") or "")+" "+(c.get("lastName") or "")).strip(),
-                                         "email": c.get("email"), "tel": c.get("phone"), "stato": stato, "dateAdded": da})
+                                         "email": c.get("email"), "tel": c.get("phone"), "stato": stato})
                     stats["not_on_sheet_recenti"] += 1
             stats["not_on_sheet"] += 1
             continue
@@ -187,7 +200,8 @@ def build(dry=True):
         _accumulate(r, c, stato, cell_changes, cell_removes, ghl_writes, warnings, stats)
 
     plan = {"cell_changes": cell_changes, "cell_removes": cell_removes, "ghl_writes": ghl_writes,
-            "not_on_sheet": not_on_sheet, "backfill_cid": backfill_cid, "warnings": warnings, "stats": stats}
+            "not_on_sheet": not_on_sheet, "new_rows": new_rows, "backfill_cid": backfill_cid,
+            "warnings": warnings, "stats": stats}
     json.dump(plan, open(hp("plan.json"), "w"), ensure_ascii=False)
     _print_summary(plan)
     return plan
@@ -275,7 +289,8 @@ def _print_summary(plan):
     print(f"NOME SETTER su GHL:{s['setter_ghl']}")
     print(f"Link community fix:{s['link_fix']} celle foglio (+{s['link_ghl']} su GHL)")
     print(f"Backfill CID:     {s['backfill']}")
-    print(f"Lead non sul foglio: {s['not_on_sheet']} (di cui RECENTI da segnalare: {s['not_on_sheet_recenti']})")
+    print(f"Righe nuove create: {s['new_rows']} (lead lavorati+recenti non sul foglio)")
+    print(f"Lead non sul foglio non creati: {s['not_on_sheet']} (recenti freddi segnalati: {s['not_on_sheet_recenti']})")
     print(f"Warning:          {len(plan['warnings'])}")
     tot = s['flag_add']+s['flag_remove']+s['tg']+s['vendita']+s['owner']+s['data_crea']
     print(f"TOTALE celle foglio da scrivere: ~{tot}")
@@ -304,7 +319,18 @@ def execute(plan):
         ok += r.get("applied", 0)
         time.sleep(0.3)
     print(f"celle scritte: {ok}/{len(allcells)}")
-    # NB: l'agent NON crea righe nuove (regola). I lead non sul foglio sono solo nel report.
+    # 3) creazione righe nuove (lead lavorati + recenti non sul foglio)
+    nr = plan.get("new_rows", [])
+    if nr:
+        textcols = ["Contact ID", "NOME E COGNOME", "EMAIL", "NUMERO DI TELEFONO", "VENDITORE",
+                    "NOME SETTER", "DATA CREAZIONE LEAD"] + list(C.FLAG_COLS.values())
+        added = 0
+        for i in range(0, len(nr), 100):
+            chunk = nr[i:i+100]
+            r = C.sheet_post({"action": "append", "sheet": C.SHEET_NAME, "rows": chunk, "textCols": textcols})
+            added += r.get("rowsAdded", 0)
+            time.sleep(0.3)
+        print(f"righe nuove create: {added}/{len(nr)}")
     return ok
 
 

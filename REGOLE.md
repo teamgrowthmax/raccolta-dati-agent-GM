@@ -17,12 +17,15 @@ Per ogni contatto GHL rilevante, trovo la riga sul foglio con priorità:
    (cifre ripetute tipo `3333333333`, troppo corto, sequenze): i telefoni finti sono condivisi da
    molti lead diversi e creerebbero falsi accoppiamenti, quindi vengono ignorati nel match e nel backfill.
 
-**L'agent NON crea righe nuove sul foglio.** Le righe le crea l'automazione GHL all'ingresso del lead;
-l'agent lavora solo su quelle esistenti. I contatti GHL **non presenti** sul foglio:
-- se sono **recenti** (creati negli ultimi 7 giorni) con uno stato front-end avanzato → **segnalati nel report**
-  (possibile automazione GHL fallita, così Luca interviene);
-- se sono **vecchi / clienti storici orfani** (es. lista clienti UPSELL importata) → **ignorati** del tutto.
-Se la riga esiste ma ha Contact ID vuoto e il match per email/tel è univoco → **backfill del Contact ID**.
+**L'agent CREA la riga sul foglio** per i lead **lavorati e recenti** non ancora presenti (con tutti i
+dati GHL + Contact ID). Criterio:
+- **Lavorato** = stato avanzato: in pipeline UPSELL (cliente), oppure stage Front End da "Appuntamento
+  fissato" in poi (show/no show/in attesa/perso/sospeso/chiuso), oppure ha dati vendita/telegram/tag setter.
+  NON i lead "freddi" (candidatura/optin/non risponde/fake/no fissato/in contatto).
+- **Recente** = attività nel **2026+** (data creazione GHL o data chiusura FE/upsell). I **vecchi clienti
+  storici** (2024-2025, es. lista clienti UPSELL importata) **NON vengono creati**.
+- I lead recenti ma "freddi" (non creabili) → solo segnalati nel report.
+Se la riga esiste ma ha Contact ID vuoto e il match per email/tel (pulito) è univoco → **backfill del Contact ID**.
 
 ---
 
